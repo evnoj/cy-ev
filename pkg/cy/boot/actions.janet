@@ -1,6 +1,6 @@
 (def- actions @{})
 
-(defn-
+(defn
   key/register-action
   "Register an action."
   [name docstring func]
@@ -86,6 +86,30 @@ For example:
   "Get all registered actions."
   []
   (table/clone actions))
+
+(defn
+  key/clear-actions
+  "Removes all registered actions."
+  []
+  (def existing (table/clone actions))
+  (table/clear actions)
+)
+
+(defn
+  key/merge-actions
+  "Merge a table of actions into the registered action table. Actions in the passed table with the same name as existing actions will overwrite. Returns a clone of the action table after the merge."
+  [new-actions]
+  (merge-into actions new-actions)
+  (table/clone actions)
+)
+
+(defn
+  key/remove-action
+  "Remove the action with the given name. Returns the [docstring func] tuple of the removed action if it existed, or nil if it didn't."
+  [name]
+  (def val (actions name))
+  (put actions name nil)
+  (identity val))
 
 (key/action
   action/command-palette

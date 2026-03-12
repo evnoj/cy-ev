@@ -197,7 +197,8 @@ func (t *State) CsiDispatch(
 	ignore bool,
 	r rune,
 ) {
-	args := make([]int, 0)
+	var argBuf [32]int
+	args := argBuf[:0]
 	for _, subParams := range params {
 		if len(subParams) > 0 {
 			args = append(args, int(subParams[0]))
@@ -206,7 +207,7 @@ func (t *State) CsiDispatch(
 
 	// go-vte returns _always_ returns a params array (unnecessarily)
 	if len(args) == 1 && args[0] == 0 {
-		args = make([]int, 0)
+		args = argBuf[:0]
 	}
 
 	c := csiEscape{

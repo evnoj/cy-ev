@@ -21,7 +21,6 @@ const maxOscRaw = 1024
 // maxOscParams is the maximum number of osc parameters allowed.
 const maxOscParams = 16
 
-
 // SosPmApcKind represents the type of SOS/PM/APC sequence.
 type SosPmApcKind = byte
 
@@ -73,6 +72,7 @@ type Parser struct {
 	intermediates   [maxIntermediates]uint8
 	intermediateIdx int
 	params          *params
+	paramsCache     [][]uint16
 	param           uint16
 	hasParam        bool
 	oscRaw          []byte
@@ -182,16 +182,16 @@ func (p *Parser) Advance(b byte) {
 
 // Intermediates returns the intermediates
 func (p *Parser) Intermediates() []byte {
-	return append([]byte{}, p.intermediates[:p.intermediateIdx]...)
+	return p.intermediates[:p.intermediateIdx]
 }
 
 // Params returns the params
 func (p *Parser) Params() [][]uint16 {
-	var params [][]uint16
+	p.paramsCache = p.paramsCache[:0]
 	p.params.Range(func(param []uint16) {
-		params = append(params, param)
+		p.paramsCache = append(p.paramsCache, param)
 	})
-	return params
+	return p.paramsCache
 }
 
 // OscParams returns the osc params
@@ -306,7 +306,7 @@ func (p *Parser) performAction(action, b byte) {
 		p.putcb(b)
 
 	case OscStartAction:
-		p.oscRaw = make([]byte, 0)
+		p.oscRaw = p.oscRaw[:0]
 		p.oscNumParams = 0
 
 	case OscPutAction:
@@ -428,7 +428,7 @@ func (p *Parser) performAction(action, b byte) {
 		case '_': // 0x5F - APC
 			p.sosPmApcKind = ApcKind
 		}
-		p.sosPmApcRaw = make([]byte, 0, 4096)
+		p.sosPmApcRaw = p.sosPmApcRaw[:0]
 
 	case SosPmApcPutAction:
 		p.sosPmApcRaw = append(p.sosPmApcRaw, b)

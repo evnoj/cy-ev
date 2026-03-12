@@ -8,24 +8,28 @@ type State = byte
 // Action represents a action type
 type Action = byte
 
-type codePointCallback func(r rune)
-type invalidSequenceCallback func()
+// Performer is an interface for parsing.
+type Performer interface {
+	// CodePoint is called when a codepoint is emitted.
+	CodePoint(r rune)
+
+	// InvalidSequence is called when an invalid sequence is found.
+	InvalidSequece()
+}
 
 // Parser represents a state machine
 type Parser struct {
 	codepoint rune
 	state     State
-	ccb       codePointCallback
-	icb       invalidSequenceCallback
+	performer Performer
 }
 
 // New returns a new parser
-func New(ccb codePointCallback, icb invalidSequenceCallback) *Parser {
+func New(performer Performer) *Parser {
 	return &Parser{
 		codepoint: 0,
 		state:     groundState,
-		ccb:       ccb,
-		icb:       icb,
+		performer: performer,
 	}
 }
 
@@ -58,15 +62,15 @@ func (p *Parser) performAction(action, b byte) {
 	switch action {
 	case invalidSequenceAction:
 		p.codepoint = 0
-		p.icb()
+		p.performer.InvalidSequece()
 
 	case emitByteAction:
-		p.ccb(rune(b))
+		p.performer.CodePoint(rune(b))
 
 	case setByte1Action:
 		point := p.codepoint | rune(b&continuationMask)
 		p.codepoint = 0
-		p.ccb(point)
+		p.performer.CodePoint(point)
 
 	case setByte2Action:
 		p.codepoint = p.codepoint | rune((b&continuationMask))<<6

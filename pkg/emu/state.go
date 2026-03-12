@@ -6,7 +6,7 @@ import (
 
 	"github.com/cfoust/cy/pkg/geom"
 
-	"github.com/danielgatis/go-vte/vtparser"
+	govte "github.com/danielgatis/go-vte"
 	"github.com/mattn/go-runewidth"
 	"github.com/sasha-s/go-deadlock"
 )
@@ -67,7 +67,7 @@ type State struct {
 	// A non-positive value disables pruning.
 	historyLimit int
 
-	parser *vtparser.Parser
+	parser *govte.Parser
 }
 
 func newState(w io.Writer) *State {
@@ -79,16 +79,7 @@ func newState(w io.Writer) *State {
 		altKeyState:   NewKeyProtocolState(),
 	}
 
-	t.parser = vtparser.New(
-		t.Print,
-		t.Execute,
-		t.Put,
-		t.Unhook,
-		t.Hook,
-		t.OscDispatch,
-		t.CsiDispatch,
-		t.EscDispatch,
-	)
+	t.parser = govte.NewParser(t)
 
 	return t
 }

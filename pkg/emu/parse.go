@@ -7,6 +7,7 @@ import (
 
 	"github.com/cfoust/cy/pkg/geom"
 
+	govte "github.com/danielgatis/go-vte"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -74,7 +75,7 @@ func (t *State) Unhook() {
 
 // Hook handles the start of a Device Control String (DCS) sequence.
 func (t *State) Hook(
-	params []int64,
+	params [][]uint16,
 	intermediates []byte,
 	ignore bool,
 	r rune,
@@ -191,14 +192,16 @@ func (t *State) OscDispatch(params [][]byte, bellTerminated bool) {
 }
 
 func (t *State) CsiDispatch(
-	params []int64,
+	params [][]uint16,
 	intermediates []byte,
 	ignore bool,
 	r rune,
 ) {
 	args := make([]int, 0)
-	for _, arg := range params {
-		args = append(args, int(arg))
+	for _, subParams := range params {
+		if len(subParams) > 0 {
+			args = append(args, int(subParams[0]))
+		}
 	}
 
 	// go-vte returns _always_ returns a params array (unnecessarily)
@@ -351,6 +354,13 @@ func (t *State) CsiDispatch(
 
 unknown: // TODO: get rid of this goto
 	fmt.Printf("[CsiDispatch] params=%v, intermediates=%v, ignore=%v, r=%v\n", params, intermediates, ignore, r)
+}
+
+func (t *State) SosPmApcDispatch(
+	kind govte.SosPmApcKind,
+	data []byte,
+	bellTerminated bool,
+) {
 }
 
 func (t *State) EscDispatch(intermediates []byte, ignore bool, b byte) {

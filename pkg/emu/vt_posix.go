@@ -4,6 +4,8 @@
 package emu
 
 import (
+	"bytes"
+
 	"github.com/cfoust/cy/pkg/geom"
 )
 
@@ -30,8 +32,21 @@ func (t *terminal) init(size geom.Size) {
 func (t *terminal) Parse(p []byte) (written int) {
 	t.dirty.writeId++
 
+	// Fast path: no colons and not mid-sequence — forward directly.
+	if t.subParamState == subParamGround &&
+		bytes.IndexByte(p, ':') == -1 {
+		for _, b := range p {
+			t.parser.Advance(b)
+			written++
+		}
+		return
+	}
+
+	// Slow path: strip colon sub-params before forwarding.
 	for _, b := range p {
-		t.parser.Advance(b)
+		if t.advanceSubParam(b) {
+			t.parser.Advance(b)
+		}
 		written++
 	}
 	return

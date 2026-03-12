@@ -15,6 +15,20 @@ const (
 	tabspaces = 8
 )
 
+// subParamStateType tracks whether we're inside a CSI colon sub-parameter.
+type subParamStateType int
+
+const (
+	// subParamGround is the default state: no active CSI sequence.
+	subParamGround subParamStateType = iota
+	// subParamEscape means we just saw ESC (0x1b).
+	subParamEscape
+	// subParamInParam means we're inside a CSI parameter list.
+	subParamInParam
+	// subParamInSubParam means we're consuming colon sub-params.
+	subParamInSubParam
+)
+
 const (
 	attrReverse = 1 << iota
 	attrUnderline
@@ -60,6 +74,11 @@ type State struct {
 	colorOverride map[Color]Color
 
 	dirty *Dirty
+
+	// subParamState tracks whether we are inside a CSI colon
+	// sub-parameter sequence. Used by advanceSubParam to strip
+	// sub-params before bytes reach the vtparser.
+	subParamState subParamStateType
 
 	// whether scrolling up should send lines to the scrollback buffer
 	disableHistory bool
@@ -934,6 +953,47 @@ func (t *State) History() []Line {
 
 func (t *State) IsAltMode() bool {
 	return IsAltMode(t.mode)
+}
+
+// advanceSubParam filters one byte through the CSI colon sub-parameter state
+// machine. It returns true if the byte should be forwarded to the vtparser,
+// false if it should be suppressed. Colon sub-param bytes (e.g. the `:3` in
+// `4:3`) are suppressed; the base param byte (`4`) is preserved.
+func (t *State) advanceSubParam(b byte) bool {
+	switch t.subParamState {
+	case subParamGround:
+		if b == 0x1b {
+			t.subParamState = subParamEscape
+		}
+		return true
+	case subParamEscape:
+		if b == '[' {
+			t.subParamState = subParamInParam
+		} else {
+			t.subParamState = subParamGround
+		}
+		return true
+	case subParamInParam:
+		if b == ':' {
+			t.subParamState = subParamInSubParam
+			return false // suppress ':'
+		}
+		if b >= 0x40 && b <= 0x7e { // CSI final byte
+			t.subParamState = subParamGround
+		}
+		return true
+	case subParamInSubParam:
+		if b == ';' {
+			t.subParamState = subParamInParam
+			return true // emit ';' to separate params
+		}
+		if b >= 0x40 && b <= 0x7e { // CSI final byte
+			t.subParamState = subParamGround
+			return true
+		}
+		return false // suppress sub-param digits
+	}
+	return true
 }
 
 func (t *State) String() string {

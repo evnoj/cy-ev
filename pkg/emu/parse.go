@@ -17,7 +17,12 @@ func (t *State) Print(c rune) {
 		t.newline(true)
 	}
 
-	w := runewidth.RuneWidth(c)
+	var w int
+	if c < 128 {
+		w = 1
+	} else {
+		w = runewidth.RuneWidth(c)
+	}
 	destCol := t.cur.C + w
 
 	// TODO(cfoust): 04/03/24 this is a nasty problem, what is the expected
@@ -87,14 +92,14 @@ func (t *State) OscDispatch(params [][]byte, bellTerminated bool) {
 		return
 	}
 
-	args := make([]string, 0)
+	t.oscArgs = t.oscArgs[:0]
 	for _, arg := range params {
-		args = append(args, string(arg))
+		t.oscArgs = append(t.oscArgs, string(arg))
 	}
 
 	s := strEscape{
 		typ:  rune(params[0][0]),
-		args: args,
+		args: t.oscArgs,
 	}
 
 	var p *string

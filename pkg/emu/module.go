@@ -103,6 +103,9 @@ func (g Glyph) Transparent() bool {
 }
 
 func (g Glyph) Width() int {
+	if g.Char < 128 {
+		return 1
+	}
 	// runewidth can be 0, but we strictly want visible glyphs to be at
 	// least one cell wide.
 	return geom.Max(runewidth.RuneWidth(g.Char), 1)

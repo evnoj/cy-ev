@@ -12,19 +12,20 @@ import (
 
 // Pre-computed escape sequences for common operations
 var (
-	csiPrefix      = []byte("\033[")
-	cursorHide     = []byte("\033[?25l")
-	cursorShow     = []byte("\033[?12l\033[?25h")
-	cursorVVisible = []byte("\033[?12;25h")
-	sgrReset       = []byte("\033(B\033[m")
-	boldMode       = []byte("\033[1m")
-	underlineMode  = []byte("\033[4m")
-	strikeMode     = []byte("\033[9m")
-	italicMode     = []byte("\033[3m")
-	blinkMode      = []byte("\033[5m")
-	strikeOff      = []byte("\033[29m")
-	syncBegin      = []byte("\033[?2026h")
-	syncEnd        = []byte("\033[?2026l")
+	csiPrefix       = []byte("\033[")
+	cursorHide      = []byte("\033[?25l")
+	cursorShow      = []byte("\033[?12l\033[?25h")
+	cursorVVisible  = []byte("\033[?12;25h")
+	sgrReset        = []byte("\033(B\033[m")
+	boldMode        = []byte("\033[1m")
+	underlineMode   = []byte("\033[4m")
+	underline4Colon = []byte("\033[4:")
+	strikeMode      = []byte("\033[9m")
+	italicMode      = []byte("\033[3m")
+	blinkMode       = []byte("\033[5m")
+	strikeOff       = []byte("\033[29m")
+	syncBegin       = []byte("\033[?2026h")
+	syncEnd         = []byte("\033[?2026l")
 )
 
 // writeInt writes a non-negative integer to the buffer without allocations.
@@ -109,6 +110,25 @@ func setColor(
 	}
 }
 
+// writeUnderlineColor writes the escape sequence for the given underline color.
+func writeUnderlineColor(buf *bytes.Buffer, color emu.Color) {
+	if r, g, b, ok := color.RGB(); ok {
+		buf.Write(csiPrefix)
+		buf.Write([]byte("58:2:"))
+		writeInt(buf, r)
+		buf.WriteByte(':')
+		writeInt(buf, g)
+		buf.WriteByte(':')
+		writeInt(buf, b)
+		buf.WriteByte('m')
+	} else if xterm, ok := color.XTerm(); ok {
+		buf.Write(csiPrefix)
+		buf.Write([]byte("58:5:"))
+		writeInt(buf, xterm)
+		buf.WriteByte('m')
+	}
+}
+
 // Calculate the minimum string to transform `src` in to `dst`.
 func swapImage(
 	dst, src image.Image,
@@ -140,7 +160,17 @@ func swapImage(
 			}
 
 			if mode&emu.AttrUnderline != 0 {
-				data.Write(underlineMode)
+				style := srcCell.UnderlineStyle()
+				if style <= 1 {
+					data.Write(underlineMode)
+				} else {
+					data.Write(underline4Colon)
+					data.WriteByte('0' + style)
+					data.WriteByte('m')
+				}
+				if !srcCell.UnderlineColor.Default() {
+					writeUnderlineColor(data, srcCell.UnderlineColor)
+				}
 			}
 
 			if mode&emu.AttrStrikethrough != 0 {

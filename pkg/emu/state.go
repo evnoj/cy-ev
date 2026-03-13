@@ -67,6 +67,9 @@ type State struct {
 
 	dirty *Dirty
 
+	// reused scratch buffer for OscDispatch, avoids per-call allocation
+	oscArgs []string
+
 	// whether scrolling up should send lines to the scrollback buffer
 	disableHistory bool
 	// The maximum number of physical lines to keep in history.
@@ -223,7 +226,12 @@ var gfxCharTable = [62]rune{
 }
 
 func (t *State) setChar(c rune, attr *Glyph, x, y int) {
-	w := runewidth.RuneWidth(c)
+	var w int
+	if c < 128 {
+		w = 1
+	} else {
+		w = runewidth.RuneWidth(c)
+	}
 
 	if attr.Mode&attrGfx != 0 {
 		if c >= 0x41 && c <= 0x7e && gfxCharTable[c-0x41] != 0 {
@@ -328,7 +336,7 @@ func (t *State) resize(size geom.Vec2) {
 	history, altHistory := t.history, t.altHistory
 	t.screen = make([]Line, rows)
 	t.altScreen = make([]Line, rows)
-	t.dirty.Lines = make(map[int]bool, rows)
+	t.dirty.Lines = make([]bool, rows)
 	t.tabs = make([]bool, cols)
 
 	t.dirty.markScreen()

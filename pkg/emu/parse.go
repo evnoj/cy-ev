@@ -197,6 +197,21 @@ func (t *State) CsiDispatch(
 	ignore bool,
 	r rune,
 ) {
+	// SGR: bypass flat conversion, pass raw params for sub-param support
+	if r == 'm' {
+		inter := byte(0)
+		if len(intermediates) > 0 {
+			inter = intermediates[0]
+		}
+		switch inter {
+		case '>': // XTMODKEYS — ignore
+		case '?': // XTQMODKEYS — ignore
+		default:
+			t.setAttr(params)
+		}
+		return
+	}
+
 	var argBuf [32]int
 	args := argBuf[:0]
 	for _, subParams := range params {
@@ -311,13 +326,6 @@ func (t *State) CsiDispatch(
 		t.moveAbsTo(t.cur.C, c.arg(0, 1)-1)
 	case 'h': // SM - set terminal mode
 		t.setMode(c.priv, true, c.args)
-	case 'm': // SGR - terminal attribute (color)
-		switch c.intermediate(0, 0) {
-		case '>': // XTMODKEYS
-		case '?': // XTQMODKEYS
-		default:
-			t.setAttr(c.args)
-		}
 	case 'n':
 		switch c.arg(0, 0) {
 		case 5: // DSR - device status report

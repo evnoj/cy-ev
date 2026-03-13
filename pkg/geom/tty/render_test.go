@@ -62,4 +62,16 @@ func TestAttributes(t *testing.T) {
 			"\033[48;2;255;0;0m           \033[0m\033[3;38;2;0;0;255;48;2;255;0;0mtest\033[0m",
 		),
 	)
+
+	// compact colon form (no color space): 58:2:R:G:B
+	testBytes(t, "underline-color-rgb",
+		[]byte("\033[4m\033[58:2:255:100:50mHello\033[0m"))
+
+	// full colon form with empty color space: 58:2::R:G:B
+	testBytes(t, "underline-color-rgb-cs",
+		[]byte("\033[4m\033[58:2::255:100:50mHello\033[0m"))
+
+	// FG with empty color space: 38:2::R:G:B
+	testBytes(t, "fg-color-rgb-cs",
+		[]byte("\033[38:2::255:100:50mHello\033[0m"))
 }

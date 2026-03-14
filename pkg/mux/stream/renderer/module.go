@@ -3,8 +3,8 @@ package renderer
 import (
 	"context"
 	"io"
+	"sync"
 
-	"github.com/cfoust/cy/pkg/emu"
 	"github.com/cfoust/cy/pkg/geom"
 	"github.com/cfoust/cy/pkg/geom/tty"
 	"github.com/cfoust/cy/pkg/mux"
@@ -22,7 +22,8 @@ import (
 // Renderer can make optimizations to only update the parts of the screen that
 // have changed.
 type Renderer struct {
-	raw    emu.Terminal
+	prevMu sync.Mutex
+	prev   *tty.State
 	screen screen.Screen
 	r      *io.PipeReader
 	w      *io.PipeWriter
@@ -41,9 +42,10 @@ func (r *Renderer) clearScreen(w io.Writer) {
 }
 
 func (r *Renderer) Resize(size geom.Size) error {
-	r.raw.Resize(size)
-	r.clearScreen(r.raw)
 	r.clearScreen(r.w)
+	r.prevMu.Lock()
+	r.prev = tty.NewDirty(size)
+	r.prevMu.Unlock()
 	return r.screen.Resize(size)
 }
 
@@ -73,11 +75,12 @@ func (r *Renderer) poll(ctx context.Context) error {
 	subscriber := r.screen.Subscribe(ctx)
 
 	for {
-		changes := tty.Swap(
-			tty.Capture(r.raw),
-			r.screen.State(),
-		)
-		_, _ = r.raw.Write(changes)
+		curr := r.screen.State()
+		r.prevMu.Lock()
+		prev := r.prev
+		r.prev = curr
+		r.prevMu.Unlock()
+		changes := tty.Swap(prev, curr)
 		_, err := r.w.Write(changes)
 		if err != nil {
 			return err
@@ -99,13 +102,9 @@ func NewRenderer(
 	screen mux.Screen,
 ) *Renderer {
 	r, w := io.Pipe()
-	target := emu.New(
-		emu.WithSize(initialSize),
-		emu.WithoutHistory,
-	)
 	_ = screen.Resize(initialSize)
 	renderer := &Renderer{
-		raw:    target,
+		prev:   tty.NewDirty(initialSize),
 		screen: screen,
 		r:      r,
 		w:      w,

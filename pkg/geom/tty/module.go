@@ -25,6 +25,20 @@ func New(size geom.Vec2) *State {
 	}
 }
 
+// NewDirty creates a *State with all cells marked attrBlank so that the next
+// Swap() call treats every cell as changed and emits a full redraw. Use this
+// instead of New() after the physical terminal has been cleared (initial
+// render or resize).
+func NewDirty(size geom.Vec2) *State {
+	state := New(size)
+	for _, line := range state.Image {
+		for i := range line {
+			line[i].Mode |= emu.AttrBlank
+		}
+	}
+	return state
+}
+
 func Copy(pos geom.Vec2, dst, src *State) {
 	image.Copy(pos, dst.Image, src.Image)
 	dst.Cursor = src.Cursor

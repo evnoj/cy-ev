@@ -137,6 +137,7 @@ func (e *Engine[T]) processKey(ctx context.Context, in input) (consumed bool) {
 
 	key, ok := in.(taro.KittyKeyMsg)
 	if !ok {
+		e.out <- in
 		return
 	}
 

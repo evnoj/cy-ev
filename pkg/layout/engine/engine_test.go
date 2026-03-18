@@ -75,6 +75,7 @@ func TestClickInactivePane(t *testing.T) {
 		},
 		Type:   keys.MousePress,
 		Button: keys.MouseLeft,
+		Down:   true,
 	})
 	time.Sleep(500 * time.Millisecond)
 

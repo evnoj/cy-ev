@@ -155,33 +155,53 @@ func (p *Pane) Send(msg mux.Msg) {
 		return
 	}
 
+	mouseMsg, ok := msg.(taro.MouseMsg)
+
+	if ok {
+		var (
+			bounds   = geom.Rect{Size: p.size}
+			inBounds = bounds.Contains(mouseMsg.Vec2)
+		)
+
+		isScroll := mouseMsg.Button == keys.MouseWheelUp ||
+			mouseMsg.Button == keys.MouseWheelDown ||
+			mouseMsg.Button == keys.MouseWheelLeft ||
+			mouseMsg.Button == keys.MouseWheelRight
+
+		if isScroll {
+			if inBounds {
+				p.screen.Send(msg)
+			}
+			return
+		}
+
+		if !inBounds {
+			return
+		}
+	}
+
 	if p.isAttached {
 		p.screen.Send(msg)
 		return
 	}
 
-	mouseMsg, ok := msg.(taro.MouseMsg)
 	if !ok {
 		return
 	}
 
-	if mouseMsg.Type != keys.MousePress || mouseMsg.Button != keys.MouseLeft ||
-		mouseMsg.Down {
+	if mouseMsg.Type != keys.MousePress || mouseMsg.Button != keys.MouseLeft {
 		return
 	}
 
-	bounds := geom.Rect{
-		Size: p.size,
-	}
-	if !bounds.Contains(mouseMsg.Vec2) {
-		return
-	}
+	p.screen.Send(msg)
 
-	newConfig := p.config.Clone().(*PaneNode)
-	newConfig.Attached = true
-	p.Publish(NodeChangeEvent{
-		Config: newConfig,
-	})
+	if mouseMsg.Down {
+		newConfig := p.config.Clone().(*PaneNode)
+		newConfig.Attached = true
+		p.Publish(NodeChangeEvent{
+			Config: newConfig,
+		})
+	}
 }
 
 func (p *Pane) Kill() {

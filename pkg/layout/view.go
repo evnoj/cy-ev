@@ -160,12 +160,28 @@ func (p *View) Send(msg mux.Msg) {
 		return
 	}
 
+	mouseMsg, ok := msg.(taro.MouseMsg)
+
+	if ok {
+		isScroll := mouseMsg.Button == keys.MouseWheelUp ||
+			mouseMsg.Button == keys.MouseWheelDown ||
+			mouseMsg.Button == keys.MouseWheelLeft ||
+			mouseMsg.Button == keys.MouseWheelRight
+
+		if isScroll {
+			bounds := geom.Rect{Size: p.size}
+			if bounds.Contains(mouseMsg.Vec2) {
+				p.screen.Send(msg)
+			}
+			return
+		}
+	}
+
 	if p.isAttached {
 		p.screen.Send(msg)
 		return
 	}
 
-	mouseMsg, ok := msg.(taro.MouseMsg)
 	if !ok {
 		return
 	}

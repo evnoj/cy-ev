@@ -143,6 +143,9 @@ func (t *Terminal) Send(msg mux.Msg) {
 		input, ok = keys.Key(msg).Bytes(mode, t.terminal.KeyState())
 	case taro.MouseMsg:
 		input, ok = keys.Mouse(msg).Bytes(mode)
+	case keys.UnknownCSISequenceEvent:
+		_, _ = t.stream.Write([]byte(msg))
+		return
 	}
 
 	if !ok || len(input) == 0 {

@@ -49,7 +49,7 @@ func (l *Layers) State() *tty.State {
 
 	state := tty.New(l.size)
 
-	states := make([]RenderLayer, 0)
+	states := make([]RenderLayer, 0, len(l.layers))
 
 	// We don't want to invoke State() separately in two different passes
 	for _, layer := range l.layers {

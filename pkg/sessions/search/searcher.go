@@ -7,7 +7,7 @@ import (
 	P "github.com/cfoust/cy/pkg/io/protocol"
 	"github.com/cfoust/cy/pkg/sessions"
 
-	"github.com/danielgatis/go-vte/vtparser"
+	govte "github.com/danielgatis/go-vte"
 )
 
 type section struct {
@@ -32,7 +32,7 @@ type Match struct {
 // using regexp.
 type searcher struct {
 	buffer      bytes.Buffer
-	parser      *vtparser.Parser
+	parser      *govte.Parser
 	didPrint    bool
 	lastPrinted bool
 	sections    []section
@@ -165,53 +165,51 @@ func (s *searcher) Parse(events []sessions.Event) {
 	}
 }
 
-func (s *searcher) print(c rune) {
+func (s *searcher) Print(c rune) {
 	s.buffer.Write([]byte{byte(c)})
 	s.didPrint = true
 }
 
-func (s *searcher) execute(b byte) {
+func (s *searcher) Execute(b byte) {
 }
 
-func (s *searcher) put(b byte) {
+func (s *searcher) Put(b byte) {
 }
 
-func (s *searcher) unhook() {
+func (s *searcher) Unhook() {
 }
 
-func (s *searcher) hook(
-	params []int64,
+func (s *searcher) Hook(
+	params [][]uint16,
 	intermediates []byte,
 	ignore bool,
 	r rune,
 ) {
 }
 
-func (s *searcher) oscDispatch(params [][]byte, bellTerminated bool) {
+func (s *searcher) OscDispatch(params [][]byte, bellTerminated bool) {
 }
 
-func (s *searcher) csiDispatch(
-	params []int64,
+func (s *searcher) CsiDispatch(
+	params [][]uint16,
 	intermediates []byte,
 	ignore bool,
 	r rune,
 ) {
 }
 
-func (s *searcher) escDispatch(intermediates []byte, ignore bool, b byte) {
+func (s *searcher) EscDispatch(intermediates []byte, ignore bool, b byte) {
+}
+
+func (s *searcher) SosPmApcDispatch(
+	kind govte.SosPmApcKind,
+	data []byte,
+	bellTerminated bool,
+) {
 }
 
 func NewSearcher() *searcher {
 	p := searcher{}
-	p.parser = vtparser.New(
-		p.print,
-		p.execute,
-		p.put,
-		p.unhook,
-		p.hook,
-		p.oscDispatch,
-		p.csiDispatch,
-		p.escDispatch,
-	)
+	p.parser = govte.NewParser(&p)
 	return &p
 }

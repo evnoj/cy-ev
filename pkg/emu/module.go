@@ -72,11 +72,22 @@ const (
 	ChangedTitle
 )
 
+// Underline style constants for use with UnderlineStyle().
+const (
+	UnderlineStyleNone   uint8 = 0
+	UnderlineStyleSingle uint8 = 1
+	UnderlineStyleDouble uint8 = 2
+	UnderlineStyleCurly  uint8 = 3
+	UnderlineStyleDotted uint8 = 4
+	UnderlineStyleDashed uint8 = 5
+)
+
 type Glyph struct {
-	Char   rune
-	Mode   int16
-	FG, BG Color
-	Write  WriteID
+	Char           rune
+	Mode           int16
+	FG, BG         Color
+	Write          WriteID
+	UnderlineColor Color
 }
 
 func (g Glyph) IsEmpty() bool {
@@ -92,6 +103,9 @@ func (g Glyph) Transparent() bool {
 }
 
 func (g Glyph) Width() int {
+	if g.Char < 128 {
+		return 1
+	}
 	// runewidth can be 0, but we strictly want visible glyphs to be at
 	// least one cell wide.
 	return geom.Max(runewidth.RuneWidth(g.Char), 1)
@@ -99,12 +113,18 @@ func (g Glyph) Width() int {
 
 func (g Glyph) Equal(other Glyph) bool {
 	return g.Char == other.Char && g.Mode == other.Mode && g.FG == other.FG &&
-		g.BG == other.BG
+		g.BG == other.BG && g.UnderlineColor == other.UnderlineColor
 }
 
 // SameAttrs reports whether the two glyphs have the same visual attributes.
 func (g Glyph) SameAttrs(other Glyph) bool {
-	return g.Mode == other.Mode && g.FG == other.FG && g.BG == other.BG
+	return g.Mode == other.Mode && g.FG == other.FG && g.BG == other.BG &&
+		g.UnderlineColor == other.UnderlineColor
+}
+
+// UnderlineStyle returns the underline style (0–5) packed into Mode bits 11-13.
+func (g Glyph) UnderlineStyle() uint8 {
+	return uint8((g.Mode >> attrUnderlineStyleShift) & 0x7)
 }
 
 func EmptyGlyph() Glyph {

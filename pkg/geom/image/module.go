@@ -24,15 +24,20 @@ func (i Image) Cell(x, y int) emu.Glyph {
 }
 
 func New(size geom.Vec2) Image {
-	image := make(Image, size.R)
-	for y := 0; y < size.R; y++ {
-		line := make(emu.Line, size.C)
-		for x := range line {
-			line[x] = emu.EmptyGlyph()
-		}
-		image[y] = line
+	if size.R == 0 || size.C == 0 {
+		return make(Image, size.R)
 	}
-	return image
+	template := make(emu.Line, size.C)
+	for x := range template {
+		template[x] = emu.EmptyGlyph()
+	}
+	img := make(Image, size.R)
+	for y := range img {
+		line := make(emu.Line, size.C)
+		copy(line, template)
+		img[y] = line
+	}
+	return img
 }
 
 func (i Image) Clone() Image {
@@ -65,9 +70,15 @@ func (i Image) Clear(region geom.Rect) {
 }
 
 func Capture(view emu.View) Image {
-	image := New(view.Size())
-	Copy(geom.Vec2{}, image, view.Screen())
-	return image
+	size := view.Size()
+	screen := view.Screen()
+	img := make(Image, size.R)
+	for y := 0; y < size.R; y++ {
+		line := make(emu.Line, size.C)
+		copy(line, screen[y])
+		img[y] = line
+	}
+	return img
 }
 
 func copyFunc(skip func(emu.Glyph) bool) func(pos geom.Vec2, dst, src Image) {

@@ -612,5 +612,5 @@ func (r *renderer) write(model Model) {
 func (r *renderer) State() *tty.State {
 	r.RLock()
 	defer r.RUnlock()
-	return r.state
+	return r.state.Clone()
 }

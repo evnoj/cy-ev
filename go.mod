@@ -10,7 +10,7 @@ require (
 	github.com/charmbracelet/lipgloss v1.1.0
 	github.com/charmbracelet/x/ansi v0.8.0
 	github.com/creack/pty v1.1.18
-	github.com/danielgatis/go-vte v1.0.4
+	github.com/danielgatis/go-vte v1.0.11
 	github.com/go-gl/mathgl v1.2.0
 	github.com/iancoleman/strcase v0.3.0
 	github.com/mattn/go-runewidth v0.0.16
@@ -79,6 +79,7 @@ require (
 	github.com/containerd/console v1.0.4-0.20230313162750-1ae8d489ac81 // indirect
 	github.com/curioswitch/go-reassign v0.3.0 // indirect
 	github.com/daixiang0/gci v0.13.7 // indirect
+	github.com/danielgatis/go-utf8 v1.0.1 // indirect
 	github.com/dave/dst v0.27.3 // indirect
 	github.com/davecgh/go-spew v1.1.1 // indirect
 	github.com/denis-tingaikin/go-header v0.5.0 // indirect

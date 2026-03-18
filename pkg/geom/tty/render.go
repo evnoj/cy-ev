@@ -2,8 +2,8 @@ package tty
 
 import (
 	"bytes"
-	"fmt"
 	"strconv"
+	"sync"
 
 	"github.com/cfoust/cy/pkg/emu"
 	"github.com/cfoust/cy/pkg/geom"
@@ -12,20 +12,37 @@ import (
 
 // Pre-computed escape sequences for common operations
 var (
-	csiPrefix      = []byte("\033[")
-	cursorHide     = []byte("\033[?25l")
-	cursorShow     = []byte("\033[?12l\033[?25h")
-	cursorVVisible = []byte("\033[?12;25h")
-	sgrReset       = []byte("\033(B\033[m")
-	boldMode       = []byte("\033[1m")
-	underlineMode  = []byte("\033[4m")
-	strikeMode     = []byte("\033[9m")
-	italicMode     = []byte("\033[3m")
-	blinkMode      = []byte("\033[5m")
-	strikeOff      = []byte("\033[29m")
-	syncBegin      = []byte("\033[?2026h")
-	syncEnd        = []byte("\033[?2026l")
+	csiPrefix         = []byte("\033[")
+	cursorHide        = []byte("\033[?25l")
+	cursorShow        = []byte("\033[?12l\033[?25h")
+	cursorVVisible    = []byte("\033[?12;25h")
+	sgrReset          = []byte("\033(B\033[m")
+	boldMode          = []byte("\033[1m")
+	underlineMode     = []byte("\033[4m")
+	underline4Colon   = []byte("\033[4:")
+	strikeMode        = []byte("\033[9m")
+	italicMode        = []byte("\033[3m")
+	blinkMode         = []byte("\033[5m")
+	strikeOff         = []byte("\033[29m")
+	syncBegin         = []byte("\033[?2026h")
+	syncEnd           = []byte("\033[?2026l")
+	cursorStyleSuffix = []byte(" q")
+	rgb48Prefix       = []byte("48;2;")
+	rgb38Prefix       = []byte("38;2;")
+	x256bgPrefix      = []byte("48;5;")
+	x256fgPrefix      = []byte("38;5;")
+	brightBgPrefix    = []byte("10")
+	uc58Colon2        = []byte("58:2:")
+	uc58Colon5        = []byte("58:5:")
 )
+
+var swapBufPool = sync.Pool{
+	New: func() any {
+		b := new(bytes.Buffer)
+		b.Grow(4096)
+		return b
+	},
+}
 
 // writeInt writes a non-negative integer to the buffer without allocations.
 func writeInt(buf *bytes.Buffer, n int) {
@@ -64,9 +81,9 @@ func setColor(
 		// \033[38;2;R;G;Bm or \033[48;2;R;G;Bm
 		buf.Write(csiPrefix)
 		if isBg {
-			buf.Write([]byte("48;2;"))
+			buf.Write(rgb48Prefix)
 		} else {
-			buf.Write([]byte("38;2;"))
+			buf.Write(rgb38Prefix)
 		}
 		writeInt(buf, r)
 		buf.WriteByte(';')
@@ -89,7 +106,7 @@ func setColor(
 			// Bright ANSI: \033[9Xm / \033[10Xm
 			buf.Write(csiPrefix)
 			if isBg {
-				buf.Write([]byte("10"))
+				buf.Write(brightBgPrefix)
 			} else {
 				buf.WriteByte('9')
 			}
@@ -99,9 +116,9 @@ func setColor(
 			// 256-color: \033[38;5;Xm / \033[48;5;Xm
 			buf.Write(csiPrefix)
 			if isBg {
-				buf.Write([]byte("48;5;"))
+				buf.Write(x256bgPrefix)
 			} else {
-				buf.Write([]byte("38;5;"))
+				buf.Write(x256fgPrefix)
 			}
 			writeInt(buf, xterm)
 			buf.WriteByte('m')
@@ -109,13 +126,29 @@ func setColor(
 	}
 }
 
-// Calculate the minimum string to transform `src` in to `dst`.
-func swapImage(
-	dst, src image.Image,
-) []byte {
-	data := new(bytes.Buffer)
+// writeUnderlineColor writes the escape sequence for the given underline color.
+func writeUnderlineColor(buf *bytes.Buffer, color emu.Color) {
+	if r, g, b, ok := color.RGB(); ok {
+		buf.Write(csiPrefix)
+		buf.Write(uc58Colon2)
+		writeInt(buf, r)
+		buf.WriteByte(':')
+		writeInt(buf, g)
+		buf.WriteByte(':')
+		writeInt(buf, b)
+		buf.WriteByte('m')
+	} else if xterm, ok := color.XTerm(); ok {
+		buf.Write(csiPrefix)
+		buf.Write(uc58Colon5)
+		writeInt(buf, xterm)
+		buf.WriteByte('m')
+	}
+}
 
-	data.Write(cursorHide)
+// writeSwapImage writes the minimum escape sequence to transform dst into src
+// into buf.
+func writeSwapImage(buf *bytes.Buffer, dst, src image.Image) {
+	buf.Write(cursorHide)
 
 	max := geom.GetMaximum(dst.Size(), src.Size())
 
@@ -128,7 +161,7 @@ func swapImage(
 				continue
 			}
 
-			writeCursorAddress(data, row, col)
+			writeCursorAddress(buf, row, col)
 
 			mode := srcCell.Mode
 
@@ -136,73 +169,100 @@ func swapImage(
 			// it's just a color change
 
 			if mode&emu.AttrBold != 0 {
-				data.Write(boldMode)
+				buf.Write(boldMode)
 			}
 
 			if mode&emu.AttrUnderline != 0 {
-				data.Write(underlineMode)
+				style := srcCell.UnderlineStyle()
+				if style <= 1 {
+					buf.Write(underlineMode)
+				} else {
+					buf.Write(underline4Colon)
+					buf.WriteByte('0' + style)
+					buf.WriteByte('m')
+				}
+				if !srcCell.UnderlineColor.Default() {
+					writeUnderlineColor(buf, srcCell.UnderlineColor)
+				}
 			}
 
 			if mode&emu.AttrStrikethrough != 0 {
-				data.Write(strikeMode)
+				buf.Write(strikeMode)
 			}
 
 			if mode&emu.AttrItalic != 0 {
-				data.Write(italicMode)
+				buf.Write(italicMode)
 			}
 
 			if mode&emu.AttrBlink != 0 {
-				data.Write(blinkMode)
+				buf.Write(blinkMode)
 			}
 
-			setColor(data, srcCell.FG, false)
-			setColor(data, srcCell.BG, true)
+			setColor(buf, srcCell.FG, false)
+			setColor(buf, srcCell.BG, true)
 
-			data.WriteRune(srcCell.Char)
+			buf.WriteRune(srcCell.Char)
 
 			// TODO(cfoust): 08/07/24 why does ExitAttributeMode not cover this in alacritty?
 			if mode&emu.AttrStrikethrough != 0 {
-				data.Write(strikeOff)
+				buf.Write(strikeOff)
 			}
 
-			data.Write(sgrReset)
+			buf.Write(sgrReset)
 
 			// CJK characters
 			col += srcCell.Width() - 1
 		}
 	}
 
-	data.Write(cursorShow)
+	buf.Write(cursorShow)
+}
 
-	return data.Bytes()
+// swapImage calculates the minimum string to transform `src` into `dst`.
+func swapImage(
+	dst, src image.Image,
+) []byte {
+	buf := swapBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	writeSwapImage(buf, dst, src)
+	result := make([]byte, buf.Len())
+	copy(result, buf.Bytes())
+	swapBufPool.Put(buf)
+	return result
 }
 
 func Swap(
 	dst, src *State,
 ) []byte {
-	data := new(bytes.Buffer)
-	data.Write(syncBegin)
-	data.Write(swapImage(dst.Image, src.Image))
+	buf := swapBufPool.Get().(*bytes.Buffer)
+	buf.Reset()
+	buf.Write(syncBegin)
+	writeSwapImage(buf, dst.Image, src.Image)
 
 	dstCursor := dst.Cursor
 	srcCursor := src.Cursor
 
 	// TODO(cfoust): 08/09/23 debug
 	//if dstCursor.X != srcCursor.X || dstCursor.Y != srcCursor.Y {
-	writeCursorAddress(data, srcCursor.R, srcCursor.C)
+	writeCursorAddress(buf, srcCursor.R, srcCursor.C)
 
 	if dstCursor.Style != srcCursor.Style {
-		fmt.Fprintf(data, "\x1b[%d q", int(srcCursor.Style))
+		buf.Write(csiPrefix)
+		writeInt(buf, int(srcCursor.Style))
+		buf.Write(cursorStyleSuffix)
 	}
 
 	// This is wasteful, we shouldn't have to include this on every frame
 	if src.CursorVisible {
-		data.Write(cursorVVisible)
+		buf.Write(cursorVVisible)
 	} else {
-		data.Write(cursorHide)
+		buf.Write(cursorHide)
 	}
 
-	data.Write(syncEnd)
+	buf.Write(syncEnd)
 
-	return data.Bytes()
+	result := make([]byte, buf.Len())
+	copy(result, buf.Bytes())
+	swapBufPool.Put(buf)
+	return result
 }

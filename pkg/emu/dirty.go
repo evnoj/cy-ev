@@ -36,7 +36,7 @@ type Dirty struct {
 	writeId WriteID
 
 	// line dirtiness
-	Lines map[int]bool
+	Lines []bool
 
 	// the most recent cell that was `setChar`'d
 	Print   Cell
@@ -68,9 +68,13 @@ func (d *Dirty) markScreen() {
 }
 
 func (t *State) markDirtyLine(row int) {
-	index := clamp(row, 0, t.rows-1)
+	n := len(t.dirty.Lines)
+	if n == 0 {
+		return
+	}
+	index := clamp(row, 0, n-1)
 
-	if _, ok := t.dirty.Lines[index]; ok {
+	if t.dirty.Lines[index] {
 		return
 	}
 
@@ -96,7 +100,7 @@ func (d *Dirty) GetSemanticPrompts() []SemanticPromptEvent {
 
 // Reset the change mask and dirtiness.
 func (d *Dirty) Reset() {
-	d.Lines = make(map[int]bool)
+	clear(d.Lines)
 	d.Flag = 0
 	d.Printed = false
 	d.Scrolled = false

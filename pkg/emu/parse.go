@@ -7,6 +7,7 @@ import (
 
 	"github.com/cfoust/cy/pkg/geom"
 
+	govte "github.com/danielgatis/go-vte"
 	"github.com/mattn/go-runewidth"
 )
 
@@ -16,7 +17,12 @@ func (t *State) Print(c rune) {
 		t.newline(true)
 	}
 
-	w := runewidth.RuneWidth(c)
+	var w int
+	if c < 128 {
+		w = 1
+	} else {
+		w = runewidth.RuneWidth(c)
+	}
 	destCol := t.cur.C + w
 
 	// TODO(cfoust): 04/03/24 this is a nasty problem, what is the expected
@@ -74,7 +80,7 @@ func (t *State) Unhook() {
 
 // Hook handles the start of a Device Control String (DCS) sequence.
 func (t *State) Hook(
-	params []int64,
+	params [][]uint16,
 	intermediates []byte,
 	ignore bool,
 	r rune,
@@ -86,14 +92,14 @@ func (t *State) OscDispatch(params [][]byte, bellTerminated bool) {
 		return
 	}
 
-	args := make([]string, 0)
+	t.oscArgs = t.oscArgs[:0]
 	for _, arg := range params {
-		args = append(args, string(arg))
+		t.oscArgs = append(t.oscArgs, string(arg))
 	}
 
 	s := strEscape{
 		typ:  rune(params[0][0]),
-		args: args,
+		args: t.oscArgs,
 	}
 
 	var p *string
@@ -191,19 +197,37 @@ func (t *State) OscDispatch(params [][]byte, bellTerminated bool) {
 }
 
 func (t *State) CsiDispatch(
-	params []int64,
+	params [][]uint16,
 	intermediates []byte,
 	ignore bool,
 	r rune,
 ) {
-	args := make([]int, 0)
-	for _, arg := range params {
-		args = append(args, int(arg))
+	// SGR: bypass flat conversion, pass raw params for sub-param support
+	if r == 'm' {
+		inter := byte(0)
+		if len(intermediates) > 0 {
+			inter = intermediates[0]
+		}
+		switch inter {
+		case '>': // XTMODKEYS — ignore
+		case '?': // XTQMODKEYS — ignore
+		default:
+			t.setAttr(params)
+		}
+		return
+	}
+
+	var argBuf [32]int
+	args := argBuf[:0]
+	for _, subParams := range params {
+		if len(subParams) > 0 {
+			args = append(args, int(subParams[0]))
+		}
 	}
 
 	// go-vte returns _always_ returns a params array (unnecessarily)
 	if len(args) == 1 && args[0] == 0 {
-		args = make([]int, 0)
+		args = argBuf[:0]
 	}
 
 	c := csiEscape{
@@ -307,13 +331,6 @@ func (t *State) CsiDispatch(
 		t.moveAbsTo(t.cur.C, c.arg(0, 1)-1)
 	case 'h': // SM - set terminal mode
 		t.setMode(c.priv, true, c.args)
-	case 'm': // SGR - terminal attribute (color)
-		switch c.intermediate(0, 0) {
-		case '>': // XTMODKEYS
-		case '?': // XTQMODKEYS
-		default:
-			t.setAttr(c.args)
-		}
 	case 'n':
 		switch c.arg(0, 0) {
 		case 5: // DSR - device status report
@@ -351,6 +368,13 @@ func (t *State) CsiDispatch(
 
 unknown: // TODO: get rid of this goto
 	fmt.Printf("[CsiDispatch] params=%v, intermediates=%v, ignore=%v, r=%v\n", params, intermediates, ignore, r)
+}
+
+func (t *State) SosPmApcDispatch(
+	kind govte.SosPmApcKind,
+	data []byte,
+	bellTerminated bool,
+) {
 }
 
 func (t *State) EscDispatch(intermediates []byte, ignore bool, b byte) {

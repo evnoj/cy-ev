@@ -6,7 +6,7 @@ import (
 
 	"github.com/cfoust/cy/pkg/geom"
 
-	"github.com/danielgatis/go-vte/vtparser"
+	govte "github.com/danielgatis/go-vte"
 	"github.com/mattn/go-runewidth"
 	"github.com/sasha-s/go-deadlock"
 )
@@ -27,6 +27,12 @@ const (
 	attrBlank
 	attrTransparent
 	attrOpaque
+)
+
+// Underline style is packed into Mode bits 11–13 (3 bits, values 0–7).
+const (
+	attrUnderlineStyleShift = 11
+	attrUnderlineStyleMask  = 0x7 << attrUnderlineStyleShift
 )
 
 // State represents the terminal emulation state. Use Lock/Unlock
@@ -61,13 +67,16 @@ type State struct {
 
 	dirty *Dirty
 
+	// reused scratch buffer for OscDispatch, avoids per-call allocation
+	oscArgs []string
+
 	// whether scrolling up should send lines to the scrollback buffer
 	disableHistory bool
 	// The maximum number of physical lines to keep in history.
 	// A non-positive value disables pruning.
 	historyLimit int
 
-	parser *vtparser.Parser
+	parser *govte.Parser
 }
 
 func newState(w io.Writer) *State {
@@ -79,16 +88,7 @@ func newState(w io.Writer) *State {
 		altKeyState:   NewKeyProtocolState(),
 	}
 
-	t.parser = vtparser.New(
-		t.Print,
-		t.Execute,
-		t.Put,
-		t.Unhook,
-		t.Hook,
-		t.OscDispatch,
-		t.CsiDispatch,
-		t.EscDispatch,
-	)
+	t.parser = govte.NewParser(t)
 
 	return t
 }
@@ -226,7 +226,12 @@ var gfxCharTable = [62]rune{
 }
 
 func (t *State) setChar(c rune, attr *Glyph, x, y int) {
-	w := runewidth.RuneWidth(c)
+	var w int
+	if c < 128 {
+		w = 1
+	} else {
+		w = runewidth.RuneWidth(c)
+	}
 
 	if attr.Mode&attrGfx != 0 {
 		if c >= 0x41 && c <= 0x7e && gfxCharTable[c-0x41] != 0 {
@@ -331,7 +336,7 @@ func (t *State) resize(size geom.Vec2) {
 	history, altHistory := t.history, t.altHistory
 	t.screen = make([]Line, rows)
 	t.altScreen = make([]Line, rows)
-	t.dirty.Lines = make(map[int]bool, rows)
+	t.dirty.Lines = make([]bool, rows)
 	t.tabs = make([]bool, cols)
 
 	t.dirty.markScreen()
@@ -738,23 +743,46 @@ func (t *State) setMode(priv bool, set bool, args []int) {
 	}
 }
 
-func (t *State) setAttr(attr []int) {
-	if len(attr) == 0 {
-		attr = []int{0}
+func (t *State) setAttr(params [][]uint16) {
+	if len(params) == 0 {
+		// \e[m with no params == SGR 0 reset
+		t.cur.Attr.Mode &^= attrReverse | attrStrikethrough |
+			attrUnderline | attrBold | attrItalic | attrBlink |
+			attrUnderlineStyleMask
+		t.cur.Attr.FG = DefaultFG
+		t.cur.Attr.BG = DefaultBG
+		t.cur.Attr.UnderlineColor = DefaultFG
+		return
 	}
-	for i := 0; i < len(attr); i++ {
-		a := attr[i]
+	for i := 0; i < len(params); i++ {
+		if len(params[i]) == 0 {
+			continue
+		}
+		a := int(params[i][0])
 		switch a {
-		case 0:
-			t.cur.Attr.Mode &^= attrReverse | attrStrikethrough | attrUnderline | attrBold | attrItalic | attrBlink
+		case 0: // reset
+			t.cur.Attr.Mode &^= attrReverse | attrStrikethrough |
+				attrUnderline | attrBold | attrItalic | attrBlink |
+				attrUnderlineStyleMask
 			t.cur.Attr.FG = DefaultFG
 			t.cur.Attr.BG = DefaultBG
+			t.cur.Attr.UnderlineColor = DefaultFG
 		case 1:
 			t.cur.Attr.Mode |= attrBold
 		case 3:
 			t.cur.Attr.Mode |= attrItalic
-		case 4:
-			t.cur.Attr.Mode |= attrUnderline
+		case 4: // underline + optional style sub-param
+			style := uint8(1) // default: single
+			if len(params[i]) > 1 {
+				style = uint8(params[i][1])
+			}
+			if style == 0 {
+				t.cur.Attr.Mode &^= attrUnderline | attrUnderlineStyleMask
+			} else {
+				t.cur.Attr.Mode |= attrUnderline
+				t.cur.Attr.Mode = (t.cur.Attr.Mode &^ int16(attrUnderlineStyleMask)) |
+					(int16(style) << attrUnderlineStyleShift)
+			}
 		case 5, 6: // slow, rapid blink
 			t.cur.Attr.Mode |= attrBlink
 		case 7:
@@ -765,25 +793,50 @@ func (t *State) setAttr(attr []int) {
 			t.cur.Attr.Mode &^= attrBold
 		case 23:
 			t.cur.Attr.Mode &^= attrItalic
-		case 24:
-			t.cur.Attr.Mode &^= attrUnderline
+		case 24: // underline off
+			t.cur.Attr.Mode &^= attrUnderline | attrUnderlineStyleMask
+			t.cur.Attr.UnderlineColor = DefaultFG
 		case 25, 26:
 			t.cur.Attr.Mode &^= attrBlink
 		case 27:
 			t.cur.Attr.Mode &^= attrReverse
 		case 29:
 			t.cur.Attr.Mode &^= attrStrikethrough
-		case 38:
-			if i+2 < len(attr) && attr[i+1] == 5 {
-				i += 2
-				if between(attr[i], 0, 255) {
-					t.cur.Attr.FG = XTermColor(attr[i])
+		case 38: // foreground color
+			// colon form: 38:5:n or 38:2:r:g:b
+			if len(params[i]) >= 3 && params[i][1] == 5 {
+				if between(int(params[i][2]), 0, 255) {
+					t.cur.Attr.FG = XTermColor(int(params[i][2]))
 				} else {
-					t.logf("bad fgcolor %d\n", attr[i])
+					t.logf("bad fgcolor %d\n", params[i][2])
 				}
-			} else if i+4 < len(attr) && attr[i+1] == 2 {
+			} else if len(params[i]) == 5 && params[i][1] == 2 {
+				r, g, b := int(params[i][2]), int(params[i][3]), int(params[i][4])
+				if !between(r, 0, 255) || !between(g, 0, 255) || !between(b, 0, 255) {
+					t.logf("bad fg rgb color (%d,%d,%d)\n", r, g, b)
+				} else {
+					t.cur.Attr.FG = RGBColor(r, g, b)
+				}
+			} else if len(params[i]) >= 6 && params[i][1] == 2 {
+				// full colon form with color space: 38:2:CS:R:G:B
+				r, g, b := int(params[i][3]), int(params[i][4]), int(params[i][5])
+				if !between(r, 0, 255) || !between(g, 0, 255) || !between(b, 0, 255) {
+					t.logf("bad fg rgb color (%d,%d,%d)\n", r, g, b)
+				} else {
+					t.cur.Attr.FG = RGBColor(r, g, b)
+				}
+				// semicolon form: 38;5;n
+			} else if i+2 < len(params) && len(params[i+1]) > 0 && params[i+1][0] == 5 {
+				i += 2
+				if between(int(params[i][0]), 0, 255) {
+					t.cur.Attr.FG = XTermColor(int(params[i][0]))
+				} else {
+					t.logf("bad fgcolor %d\n", params[i][0])
+				}
+				// semicolon form: 38;2;r;g;b
+			} else if i+4 < len(params) && len(params[i+1]) > 0 && params[i+1][0] == 2 {
 				i += 4
-				r, g, b := attr[i-2], attr[i-1], attr[i]
+				r, g, b := int(params[i-2][0]), int(params[i-1][0]), int(params[i][0])
 				if !between(r, 0, 255) || !between(g, 0, 255) || !between(b, 0, 255) {
 					t.logf("bad fg rgb color (%d,%d,%d)\n", r, g, b)
 				} else {
@@ -794,17 +847,41 @@ func (t *State) setAttr(attr []int) {
 			}
 		case 39:
 			t.cur.Attr.FG = DefaultFG
-		case 48:
-			if i+2 < len(attr) && attr[i+1] == 5 {
-				i += 2
-				if between(attr[i], 0, 255) {
-					t.cur.Attr.BG = XTermColor(attr[i])
+		case 48: // background color
+			// colon form: 48:5:n or 48:2:r:g:b
+			if len(params[i]) >= 3 && params[i][1] == 5 {
+				if between(int(params[i][2]), 0, 255) {
+					t.cur.Attr.BG = XTermColor(int(params[i][2]))
 				} else {
-					t.logf("bad bgcolor %d\n", attr[i])
+					t.logf("bad bgcolor %d\n", params[i][2])
 				}
-			} else if i+4 < len(attr) && attr[i+1] == 2 {
+			} else if len(params[i]) == 5 && params[i][1] == 2 {
+				r, g, b := int(params[i][2]), int(params[i][3]), int(params[i][4])
+				if !between(r, 0, 255) || !between(g, 0, 255) || !between(b, 0, 255) {
+					t.logf("bad bg rgb color (%d,%d,%d)\n", r, g, b)
+				} else {
+					t.cur.Attr.BG = RGBColor(r, g, b)
+				}
+			} else if len(params[i]) >= 6 && params[i][1] == 2 {
+				// full colon form with color space: 48:2:CS:R:G:B
+				r, g, b := int(params[i][3]), int(params[i][4]), int(params[i][5])
+				if !between(r, 0, 255) || !between(g, 0, 255) || !between(b, 0, 255) {
+					t.logf("bad bg rgb color (%d,%d,%d)\n", r, g, b)
+				} else {
+					t.cur.Attr.BG = RGBColor(r, g, b)
+				}
+				// semicolon form: 48;5;n
+			} else if i+2 < len(params) && len(params[i+1]) > 0 && params[i+1][0] == 5 {
+				i += 2
+				if between(int(params[i][0]), 0, 255) {
+					t.cur.Attr.BG = XTermColor(int(params[i][0]))
+				} else {
+					t.logf("bad bgcolor %d\n", params[i][0])
+				}
+				// semicolon form: 48;2;r;g;b
+			} else if i+4 < len(params) && len(params[i+1]) > 0 && params[i+1][0] == 2 {
 				i += 4
-				r, g, b := attr[i-2], attr[i-1], attr[i]
+				r, g, b := int(params[i-2][0]), int(params[i-1][0]), int(params[i][0])
 				if !between(r, 0, 255) || !between(g, 0, 255) || !between(b, 0, 255) {
 					t.logf("bad bg rgb color (%d,%d,%d)\n", r, g, b)
 				} else {
@@ -815,6 +892,29 @@ func (t *State) setAttr(attr []int) {
 			}
 		case 49:
 			t.cur.Attr.BG = DefaultBG
+		case 58: // underline color
+			// colon form: 58:5:n or 58:2:r:g:b
+			if len(params[i]) >= 3 && params[i][1] == 5 {
+				t.cur.Attr.UnderlineColor = XTermColor(int(params[i][2]))
+			} else if len(params[i]) == 5 && params[i][1] == 2 {
+				t.cur.Attr.UnderlineColor = RGBColor(
+					int(params[i][2]), int(params[i][3]), int(params[i][4]))
+			} else if len(params[i]) >= 6 && params[i][1] == 2 {
+				// full colon form with color space: 58:2:CS:R:G:B
+				t.cur.Attr.UnderlineColor = RGBColor(
+					int(params[i][3]), int(params[i][4]), int(params[i][5]))
+				// semicolon form: 58;5;n
+			} else if i+2 < len(params) && len(params[i+1]) > 0 && params[i+1][0] == 5 {
+				i += 2
+				t.cur.Attr.UnderlineColor = XTermColor(int(params[i][0]))
+				// semicolon form: 58;2;r;g;b
+			} else if i+4 < len(params) && len(params[i+1]) > 0 && params[i+1][0] == 2 {
+				i += 4
+				t.cur.Attr.UnderlineColor = RGBColor(
+					int(params[i-2][0]), int(params[i-1][0]), int(params[i][0]))
+			}
+		case 59: // reset underline color
+			t.cur.Attr.UnderlineColor = DefaultFG
 		default:
 			if between(a, 30, 37) {
 				t.cur.Attr.FG = ANSIColor(a - 30)

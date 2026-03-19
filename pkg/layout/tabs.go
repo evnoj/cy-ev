@@ -248,7 +248,7 @@ func (n *TabsNode) SetVisibleChild(index int, node Node) {
 		return
 	}
 
-	n.SetChild(0, node)
+	n.SetChild(index, node)
 }
 
 func (n *TabsNode) Screen(

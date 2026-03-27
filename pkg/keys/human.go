@@ -216,7 +216,7 @@ func (k Key) String() (str string) {
 	if k.HasAlt() {
 		modParts = append(modParts, "alt")
 	}
-	if k.Shifted == 0 && k.HasShift() {
+	if k.HasShift() && (k.Shifted == 0 || k.Mod != KeyModShift) {
 		modParts = append(modParts, "shift")
 	}
 

@@ -49,6 +49,7 @@ const (
 	ParamReplayTextVisualMode       = "replay-text-visual-mode"
 	ParamReplayTimeStyle            = "replay-time-style"
 	ParamReplayVisualStyle          = "replay-visual-style"
+	ParamRingBell                   = "ring-bell"
 	ParamSearchStatusBarStyle       = "search-status-bar-style"
 	ParamSearchTextNoMatchesFound   = "search-text-no-matches-found"
 	ParamSearchTextSearching        = "search-text-searching"
@@ -778,6 +779,24 @@ func (p *Parameters) SetReplayVisualStyle(value *style.Style) {
 	p.set(ParamReplayVisualStyle, value)
 }
 
+func (p *Parameters) RingBell() bool {
+	value, ok := p.Get(ParamRingBell)
+	if !ok {
+		return defaults.RingBell
+	}
+
+	realValue, ok := value.(bool)
+	if !ok {
+		return defaults.RingBell
+	}
+
+	return realValue
+}
+
+func (p *Parameters) SetRingBell(value bool) {
+	p.set(ParamRingBell, value)
+}
+
 func (p *Parameters) SearchStatusBarStyle() *style.Style {
 	value, ok := p.Get(ParamSearchStatusBarStyle)
 	if !ok {
@@ -986,6 +1005,8 @@ func (p *Parameters) isDefault(key string) bool {
 		return true
 	case ParamReplayVisualStyle:
 		return true
+	case ParamRingBell:
+		return true
 	case ParamSearchStatusBarStyle:
 		return true
 	case ParamSearchTextNoMatchesFound:
@@ -1087,6 +1108,8 @@ func (p *Parameters) getDefault(key string) (value interface{}, ok bool) {
 		return defaults.ReplayTimeStyle, true
 	case ParamReplayVisualStyle:
 		return defaults.ReplayVisualStyle, true
+	case ParamRingBell:
+		return defaults.RingBell, true
 	case ParamSearchStatusBarStyle:
 		return defaults.SearchStatusBarStyle, true
 	case ParamSearchTextNoMatchesFound:
@@ -1869,6 +1892,25 @@ func (p *Parameters) setDefault(key string, value interface{}) error {
 		p.set(key, translated)
 		return nil
 
+	case ParamRingBell:
+		if !janetOk {
+			realValue, ok := value.(bool)
+			if !ok {
+				return fmt.Errorf("invalid value for ParamRingBell, should be bool")
+			}
+			p.set(key, realValue)
+			return nil
+		}
+
+		var translated bool
+		err := janetValue.Unmarshal(&translated)
+		if err != nil {
+			janetValue.Free()
+			return fmt.Errorf("invalid value for :ring-bell: %s", err)
+		}
+		p.set(key, translated)
+		return nil
+
 	case ParamSearchStatusBarStyle:
 		if !janetOk {
 			realValue, ok := value.(*style.Style)
@@ -2200,6 +2242,11 @@ func init() {
 			Name:      "replay-visual-style",
 			Docstring: "The [style](/api.md#style) used to represent visual mode.",
 			Default:   defaults.ReplayVisualStyle,
+		},
+		{
+			Name:      "ring-bell",
+			Docstring: "Whether a bell (the `BEL` byte, `\a`) emitted by a pane should ring\nthe host terminal of connected clients. When `true`, a bell from\nwithin cy propagates to the outer terminal(s) so they can alert as\nusual.",
+			Default:   defaults.RingBell,
 		},
 		{
 			Name:      "search-status-bar-style",

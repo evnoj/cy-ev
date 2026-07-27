@@ -79,10 +79,9 @@ After finishing any change set, always run the following before committing:
 just lint
 just format
 just build
-just docs-build
 ```
 
-All four must pass.
+All three must pass.
 
 ## Code Architecture
 

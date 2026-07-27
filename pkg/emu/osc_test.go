@@ -18,6 +18,17 @@ func TestPWD(t *testing.T) {
 	require.Equal(t, "test", term.Directory())
 }
 
+func TestBell(t *testing.T) {
+	term := New()
+	require.Equal(t, 0, term.Changes().Bell)
+
+	_, _ = term.Write([]byte("\a"))
+	require.Equal(t, 1, term.Changes().Bell)
+
+	_, _ = term.Write([]byte("hello\aworld\a"))
+	require.Equal(t, 3, term.Changes().Bell)
+}
+
 func TestOSC133PromptStart(t *testing.T) {
 	term := New()
 	_, _ = term.Write([]byte("\x1b]133;A\x1b\\"))

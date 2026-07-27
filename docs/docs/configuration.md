@@ -97,6 +97,19 @@ This is useful for:
 
 If `hook/init` is not defined, no error occurs; hooks are optional.
 
+### `hook/bell`
+
+The `hook/bell` function is called when a pane emits a terminal bell (the `BEL`
+byte, `\a`). It receives a single argument: the [NodeID](/api.md#nodeid) of
+the pane that rang. It runs in the context of the client attached to that pane.
+
+```janet
+(defn hook/bell [id]
+  (msg/toast :info (string "bell from pane #" id)))
+```
+
+Like all hooks, `hook/bell` is optional; if it is not defined, no error occurs.
+
 ## Plugins
 
 `cy` has a rudimentary plugin system. A plugin is any directory with an `init.janet` at its root. On startup, `cy` checks whether one of these directories exists:

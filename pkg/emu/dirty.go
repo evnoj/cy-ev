@@ -53,6 +53,11 @@ type Dirty struct {
 	// SemanticPrompts contains OSC 133 semantic prompt events since the
 	// last Reset().
 	SemanticPrompts []SemanticPromptEvent
+
+	// Bell is a monotonic count of BEL bytes (\a) received. It is
+	// intentionally not cleared by Reset() so that consumers on the live
+	// (non-resetting) path can detect new bells by diffing the count.
+	Bell int
 }
 
 func (t *State) Changes() *Dirty {

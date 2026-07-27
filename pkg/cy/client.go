@@ -128,10 +128,14 @@ func (c *Cy) NewClient(
 	return client, nil
 }
 
-// runHook attempts to run a hook function by name in the client's context.
-// If the hook is not defined, no error is reported. Other errors are logged
-// and displayed as a toast.
-func (c *Cy) runHook(client *Client, funcName string) {
+// runHook attempts to run a hook function by name in the client's context,
+// passing args to the Janet function. If the hook is not defined, no error is
+// reported. Other errors are logged and displayed as a toast.
+func (c *Cy) runHook(
+	client *Client,
+	funcName string,
+	args ...interface{},
+) {
 	// Use a timeout to ensure hook doesn't block indefinitely
 	ctx, cancel := context.WithTimeout(client.Ctx(), 5*time.Second)
 	defer cancel()
@@ -141,6 +145,7 @@ func (c *Cy) runHook(client *Client, funcName string) {
 		client,
 		janet.Params{Dyns: c.logPipe.Dyns()},
 		funcName,
+		args...,
 	)
 	if err == nil || errors.Is(err, context.Canceled) ||
 		errors.Is(err, context.DeadlineExceeded) {
@@ -169,6 +174,21 @@ func (c *Client) Read(p []byte) (n int, err error) {
 func (c *Client) Write(data []byte) (n int, err error) {
 	c.binds.Input(data)
 	return len(data), nil
+}
+
+// Bell rings the client's host terminal by injecting a raw BEL byte into its
+// output stream. The write happens in a goroutine so that a slow or stalled
+// client cannot block the caller. BEL does not alter terminal state, so
+// injecting it raw does not desync the renderer's diffing.
+func (c *Client) Bell() {
+	renderer := c.renderer
+	if renderer == nil {
+		return
+	}
+
+	go func() {
+		_, _ = renderer.Writer().Write([]byte{'\a'})
+	}()
 }
 
 func (c *Client) Resize(size geom.Vec2) error {

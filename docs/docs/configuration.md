@@ -110,6 +110,21 @@ the pane that rang. It runs in the context of the client attached to that pane.
 
 Like all hooks, `hook/bell` is optional; if it is not defined, no error occurs.
 
+### `hook/title`
+
+The `hook/title` function is called when a pane's terminal title changes (the
+title set via the `OSC 0`/`1`/`2` escape sequences, and the same string returned
+by [cmd/title](/api.md#cmdtitle)). It receives two arguments: the
+[NodeID](/api.md#nodeid) of the pane and the new title string. It runs in the
+context of the client attached to that pane.
+
+```janet
+(defn hook/title [id title]
+  (msg/toast :info (string "pane #" id " -> " title)))
+```
+
+Like all hooks, `hook/title` is optional; if it is not defined, no error occurs.
+
 ## Plugins
 
 `cy` has a rudimentary plugin system. A plugin is any directory with an `init.janet` at its root. On startup, `cy` checks whether one of these directories exists:

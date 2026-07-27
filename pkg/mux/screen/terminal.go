@@ -27,6 +27,11 @@ type ExitEvent struct {
 // BellEvent is published when the terminal receives a BEL byte (\a).
 type BellEvent struct{}
 
+// TitleEvent is published when the terminal's title changes.
+type TitleEvent struct {
+	Title string
+}
+
 type Terminal struct {
 	deadlock.RWMutex
 	*mux.UpdatePublisher
@@ -39,6 +44,7 @@ type Terminal struct {
 	exited    bool
 	exitError error
 	lastBell  int
+	lastTitle string
 
 	syncTimerMu deadlock.Mutex
 	syncTimer   *time.Timer
@@ -186,6 +192,9 @@ func (t *Terminal) Write(p []byte) (n int, err error) {
 	bell := t.terminal.Changes().Bell
 	rang := bell > t.lastBell
 	t.lastBell = bell
+	title := t.terminal.Title()
+	titleChanged := title != t.lastTitle
+	t.lastTitle = title
 	t.Unlock()
 	if err != nil {
 		return 0, err
@@ -193,6 +202,10 @@ func (t *Terminal) Write(p []byte) (n int, err error) {
 
 	if rang {
 		t.Publish(BellEvent{})
+	}
+
+	if titleChanged {
+		t.Publish(TitleEvent{Title: title})
 	}
 
 	if syncing {

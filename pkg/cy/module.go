@@ -469,6 +469,13 @@ func (c *Cy) pollNodeEvents(ctx context.Context, events <-chan events.Msg) {
 				go client.runAction(event)
 			case screen.BellEvent:
 				go c.runHook(client, "hook/bell", nodeEvent.Id)
+			case screen.TitleEvent:
+				go c.runHook(
+					client,
+					"hook/title",
+					nodeEvent.Id,
+					event.Title,
+				)
 			case cmd.CommandEvent:
 				err := c.cmdStore.SaveCommand(
 					c.Ctx(),

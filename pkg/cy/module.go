@@ -262,6 +262,23 @@ func (c *Cy) RerenderClients() {
 	}
 }
 
+// ringClients propagates a bell to the host terminal of every connected
+// client whose :ring-bell parameter is enabled, so that a bell from within cy
+// rings the outer terminals.
+func (c *Cy) ringClients() {
+	c.RLock()
+	clients := c.clients
+	c.RUnlock()
+
+	for _, client := range clients {
+		if !client.Params().RingBell() {
+			continue
+		}
+
+		client.Bell()
+	}
+}
+
 // Get the first pane that another client is attached to or return nil if there
 // are no other clients.
 func (c *Cy) getFirstClientPane(except *Client) tree.Node {
@@ -413,6 +430,13 @@ func (c *Cy) pollNodeEvents(ctx context.Context, events <-chan events.Msg) {
 			nodeEvent, ok := event.(tree.NodeEvent)
 			if !ok {
 				continue
+			}
+
+			// A bell propagates to the host terminals of every
+			// connected client, regardless of which pane they are
+			// currently viewing.
+			if _, ok := nodeEvent.Event.(screen.BellEvent); ok {
+				c.ringClients()
 			}
 
 			client, ok := c.InferClient(nodeEvent.Id)

@@ -176,6 +176,21 @@ func (c *Client) Write(data []byte) (n int, err error) {
 	return len(data), nil
 }
 
+// Bell rings the client's host terminal by injecting a raw BEL byte into its
+// output stream. The write happens in a goroutine so that a slow or stalled
+// client cannot block the caller. BEL does not alter terminal state, so
+// injecting it raw does not desync the renderer's diffing.
+func (c *Client) Bell() {
+	renderer := c.renderer
+	if renderer == nil {
+		return
+	}
+
+	go func() {
+		_, _ = renderer.Writer().Write([]byte{'\a'})
+	}()
+}
+
 func (c *Client) Resize(size geom.Vec2) error {
 	_ = c.muxClient.Resize(size)
 	_ = c.renderer.Resize(size)

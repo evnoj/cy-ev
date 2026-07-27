@@ -72,6 +72,11 @@ type defaultParams struct {
 	// codes. This should generally be "true" unless you use an old terminal
 	// emulator.
 	UseSystemClipboard bool
+	// Whether a bell (the `BEL` byte, `\a`) emitted by a pane should ring
+	// the host terminal of connected clients. When `true`, a bell from
+	// within cy propagates to the outer terminal(s) so they can alert as
+	// usual.
+	RingBell bool
 	// Whether to avoid blocking on (input/*) calls. Just for testing.
 	skipInput bool
 
@@ -175,6 +180,7 @@ var (
 		DefaultShell:       "/bin/bash",
 		skipInput:          false,
 		UseSystemClipboard: false,
+		RingBell:           true,
 
 		ColorMap: &style.ColorMap{},
 

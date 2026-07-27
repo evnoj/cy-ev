@@ -16,6 +16,7 @@ import (
 	"github.com/cfoust/cy/pkg/emu"
 	"github.com/cfoust/cy/pkg/events"
 	"github.com/cfoust/cy/pkg/janet"
+	"github.com/cfoust/cy/pkg/mux/screen"
 	"github.com/cfoust/cy/pkg/mux/screen/server"
 	"github.com/cfoust/cy/pkg/mux/screen/toasts"
 	"github.com/cfoust/cy/pkg/mux/screen/tree"
@@ -442,6 +443,8 @@ func (c *Cy) pollNodeEvents(ctx context.Context, events <-chan events.Msg) {
 				)
 			case bind.BindEvent:
 				go client.runAction(event)
+			case screen.BellEvent:
+				go c.runHook(client, "hook/bell", nodeEvent.Id)
 			case cmd.CommandEvent:
 				err := c.cmdStore.SaveCommand(
 					c.Ctx(),

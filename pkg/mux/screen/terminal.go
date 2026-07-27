@@ -24,6 +24,9 @@ type ExitEvent struct {
 	Code    int
 }
 
+// BellEvent is published when the terminal receives a BEL byte (\a).
+type BellEvent struct{}
+
 type Terminal struct {
 	deadlock.RWMutex
 	*mux.UpdatePublisher
@@ -35,6 +38,7 @@ type Terminal struct {
 	size      geom.Size
 	exited    bool
 	exitError error
+	lastBell  int
 
 	syncTimerMu deadlock.Mutex
 	syncTimer   *time.Timer
@@ -179,9 +183,16 @@ func (t *Terminal) Send(msg mux.Msg) {
 func (t *Terminal) Write(p []byte) (n int, err error) {
 	t.Lock()
 	n, syncing, err := t.terminal.WriteSync(p)
+	bell := t.terminal.Changes().Bell
+	rang := bell > t.lastBell
+	t.lastBell = bell
 	t.Unlock()
 	if err != nil {
 		return 0, err
+	}
+
+	if rang {
+		t.Publish(BellEvent{})
 	}
 
 	if syncing {

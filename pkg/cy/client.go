@@ -128,10 +128,14 @@ func (c *Cy) NewClient(
 	return client, nil
 }
 
-// runHook attempts to run a hook function by name in the client's context.
-// If the hook is not defined, no error is reported. Other errors are logged
-// and displayed as a toast.
-func (c *Cy) runHook(client *Client, funcName string) {
+// runHook attempts to run a hook function by name in the client's context,
+// passing args to the Janet function. If the hook is not defined, no error is
+// reported. Other errors are logged and displayed as a toast.
+func (c *Cy) runHook(
+	client *Client,
+	funcName string,
+	args ...interface{},
+) {
 	// Use a timeout to ensure hook doesn't block indefinitely
 	ctx, cancel := context.WithTimeout(client.Ctx(), 5*time.Second)
 	defer cancel()
@@ -141,6 +145,7 @@ func (c *Cy) runHook(client *Client, funcName string) {
 		client,
 		janet.Params{Dyns: c.logPipe.Dyns()},
 		funcName,
+		args...,
 	)
 	if err == nil || errors.Is(err, context.Canceled) ||
 		errors.Is(err, context.DeadlineExceeded) {

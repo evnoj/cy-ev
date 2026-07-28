@@ -125,6 +125,30 @@ context of the client attached to that pane.
 
 Like all hooks, `hook/title` is optional; if it is not defined, no error occurs.
 
+### `hook/attach`
+
+The `hook/attach` function is called when a client attaches to a different node
+(that is, when the view it is attached to changes, such as by switching panes or
+changing the layout). It receives three arguments:
+
+1. The [NodeID](/api.md#nodeid) of the previously attached node (`nil` on the
+   client's first attach).
+1. The NodeID of the newly attached node.
+1. The [layout](/api.md#layoutset) that was just set. This is the same value
+   returned by [layout/get](/api.md#layoutget). To get the path to the attached
+   view within it, pass it to [layout/attach-path](/api.md#layoutattach-path).
+
+It runs in the context of the client that attached.
+
+```janet
+(defn hook/attach [prev id layout]
+  (msg/toast :info
+             (string "attached to node #" id
+                     " at path " (layout/attach-path layout))))
+```
+
+Like all hooks, `hook/attach` is optional; if it is not defined, no error occurs.
+
 ## Plugins
 
 `cy` has a rudimentary plugin system. A plugin is any directory with an `init.janet` at its root. On startup, `cy` checks whether one of these directories exists:

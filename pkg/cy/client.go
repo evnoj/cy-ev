@@ -459,7 +459,27 @@ func (c *Client) SetLayout(l L.Layout) error {
 		node, _ = c.cy.tree.NodeById(*attached)
 	}
 
+	prevNode := c.node
 	c.node = node
+
+	// If the attached node changed, fire hook/attach with the previously
+	// attached node's ID (nil on the first attach), the newly attached
+	// node's ID, and the layout that was just set. Run it in a goroutine
+	// (like all hooks) so it cannot deadlock on the lock we hold here.
+	if node != nil &&
+		(prevNode == nil || prevNode.Id() != node.Id()) {
+		var prevID interface{}
+		if prevNode != nil {
+			prevID = prevNode.Id()
+		}
+		go c.cy.runHook(
+			c,
+			"hook/attach",
+			prevID,
+			node.Id(),
+			&l,
+		)
+	}
 
 	isPane := false
 	if node != nil {

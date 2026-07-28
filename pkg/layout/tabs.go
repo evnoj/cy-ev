@@ -3,6 +3,7 @@ package layout
 import (
 	"context"
 	"fmt"
+	"strings"
 
 	"github.com/cfoust/cy/pkg/emu"
 	"github.com/cfoust/cy/pkg/geom"
@@ -366,7 +367,7 @@ func (t *Tabs) State() *tty.State {
 		// If the given name contains ANSI escape sequences, we don't
 		// use the provided fg/bg colors and just render the name
 		// directly.
-		if len(name) == cols {
+		if !strings.ContainsRune(name, '\x1b') {
 			if tab.Active {
 				name = active.Render(tab.Name)
 			} else {
